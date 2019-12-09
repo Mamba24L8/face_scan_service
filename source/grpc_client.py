@@ -52,10 +52,10 @@ class ImageIter:
         self.mat = np.zeros(shape=self.shape, dtype=np.uint8)
 
     def __iter__(self):
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future = executor.map(cv2.imread, self.image_files)
-        for img in future:
-            yield img
+        mat = self.image_loader()
+        size = self.shape[3]
+        for i in range(size):
+            yield mat[:, :, :, i]
 
     def __len__(self):
         return len(self.image_files)
@@ -179,8 +179,10 @@ class GetFaceFeature:
 
         Returns
         -------
-        face_infos : List,
-            the feature, bounding_box and landmark of face
+        face_infos : List[Tuple],
+            the feature with shape (1, 512),
+            bounding_box with shape (1, 4)
+            landmark of face with shape (5, 2)
         """
         try:
             response = self.stub.face_grpc(
@@ -194,15 +196,15 @@ class GetFaceFeature:
                 feature = np.array(
                     [[face_feature for face_feature in face.face_feature]])
                 bounding_box = np.array(
-                    [face.rect.x, face.rect.y, face.rect.x + face.rect.width,
-                     face.rect.y + face.rect.height])
+                    [[face.rect.x, face.rect.y, face.rect.x + face.rect.width,
+                      face.rect.y + face.rect.height]])
                 landmarks = np.array([(lm.x, lm.y) for lm in face.landmarks])
 
                 face_infos.append((feature, bounding_box, landmarks))
             return face_infos
         except Exception as e:
             logger.error(f"人脸特征获取错误，请检查人脸docker服务是否正常，错误信息 {e}")
-            return None, None
+            return None
 
     def pictures_feature(self, path, chunk_size=2000, max_workers=None):
         filename_list = sort_filename(path)
