@@ -107,7 +107,7 @@ class SackedOfficials(TargetPerson):
         sacked_officials_list = self.db.query_person_list('use_face', 1)
         return format_data(sacked_officials_list)
 
-    def process(self    , df):
+    def process(self, df):
         # df = get_df(face_infos_list)
         return CompareFace(self.target_person_info, self.sim).compare_face(df)
 
