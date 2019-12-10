@@ -156,7 +156,7 @@ class GetFaceFeature:
         self.stub = face_grpc_pb2_grpc.face_grpcServiceClsStub(self.channel)
 
     def __enter__(self):
-        return self.channel
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
@@ -206,11 +206,11 @@ class GetFaceFeature:
             logger.error(f"人脸特征获取错误，请检查人脸docker服务是否正常，错误信息 {e}")
             return None
 
-    def pictures_feature(self, path, chunk_size=2000, max_workers=None):
-        filename_list = sort_filename(path)
-        for filenames in chunked(filename_list, chunk_size):
+    def images_feature(self, path, chunk_size=2000, max_workers=None):
+        for filenames in chunked(path, chunk_size):
             image_iter = ImageIter(filenames)
             _requests = GenerateRequest(image_iter)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                feature = list(executor.map(self.single_pic_feature, _requests))
-            yield feature
+                face_infos_list = list(
+                    executor.map(self.single_pic_feature, _requests))
+            yield face_infos_list, image_iter.mat, filenames

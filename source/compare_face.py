@@ -50,10 +50,31 @@ def format_data(data: List[Dict]) -> Tuple[List, np.array, List]:
     return names, features, ids
 
 
+def get_df(face_infos_list):
+    """
+
+    Parameters
+    ----------
+    face_infos_list : list
+        一张图片的grpc返回结果为list的一个元素
+
+    Returns
+    -------
+    df : pd.DataFrame
+    """
+    lst = []
+    for idx, feat_infos in enumerate(face_infos_list):
+        if feat_infos:
+            for feat_info in feat_infos:
+                lst.append([idx, *feat_info])
+    df = pd.DataFrame(lst, columns=["idx", "feature", "bb", "landmark"])
+    return df
+
+
 class CompareFace:
 
-    def __init__(self, target_person_feature, threshold):
-        self.names, self.features, self.ids = target_person_feature
+    def __init__(self, target_person_info, threshold):
+        self.names, self.features, self.ids = target_person_info
         self.threshold = threshold
 
     def similarity(self, matrix) -> np.ndarray:
