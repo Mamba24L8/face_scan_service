@@ -10,6 +10,7 @@ import os
 import time
 import json
 import numpy as np
+import pandas as pd
 
 from pathlib import Path
 from datetime import datetime
@@ -95,6 +96,7 @@ class TargetPerson(metaclass=ABCMeta):
 
 
 class SackedOfficials(TargetPerson):
+    """落马官员"""
     _field = 'use_face'
     _status = 1
 
@@ -107,15 +109,16 @@ class SackedOfficials(TargetPerson):
         sacked_officials_list = self.db.query_person_list('use_face', 1)
         return format_data(sacked_officials_list)
 
-    def process(self, df):
+    def process(self, df: pd.DataFrame):
         # df = get_df(face_infos_list)
         return CompareFace(self.target_person_info, self.sim).compare_face(df)
 
-    def runner(self, single_picture_feature: List[np.ndarray], message: Dict):
+    def runner(self, message: dict, df: pd.DataFrame):
         pass
 
 
 class SpecialPerson:
+    """AI搜索"""
     _field = 'use_ai'
     _status = 1
 
@@ -129,43 +132,51 @@ class SpecialPerson:
         special_person_list = self.db.query_person_list('use_ai', 1)
         return format_data(special_person_list)
 
-    def process(self, df):
+    def process(self, df: pd.DataFrame):
         # df = get_df(face_infos_list)
         return CompareFace(self.target_person_info, self.sim).compare_face(df)
 
-    def runner(self, single_picture_feature: List[np.ndarray], message: Dict):
-        es_saver = []
-        vio_saver = []
+    def runner(self, message: Dict, df: pd.DataFrame):
+        elastic_search = []
+        df = self.process(df)
 
-        for feature, bbox, landmark in single_picture_feature:
-            msg = {
-                **message,
-                "feature": json.dumps(feature.tolist()),
-                "bbox": json.dumps(bbox.tolist()),
-                "landmark": json.dumps(landmark.tolist())
-            }
-            vio_saver.append(msg)
-
-        boxes = self.process(single_picture_feature)
-
-        if boxes:
+        if df:
             video_url = '/'.join(message['video_path'].split('/')[-5:])
 
-            for box in boxes:
-                if box.get("wid", None):
-                    face_info = {
-                        "frame_url": message.get("frame_path"),
-                        "video_name": os.path.basename(video_url),
-                        "video_url": video_url,
-                        "channel_id": message.get("chan_num"),
-                        "channel_name": message.get("chan_name"),
-                        "create_time": str(datetime.now()).split('.')[0],
-                        "time": message.get("time"),
-                        "date": message.get("date"),
-                        "face_name": box.get("who"),
-                        "source": message.get("data_source")}
-                    es_saver.append(face_info)
-        return es_saver, vio_saver
+            for _, row in df.iterrows():
+                if row["wid"] is None:
+                    continue
+                info = {
+                    "frame_url": message.get("frame_path"),
+                    "video_name": os.path.basename(video_url),
+                    "video_url": video_url,
+                    "channel_id": message.get("chan_num"),
+                    "channel_name": message.get("chan_name"),
+                    "create_time": str(datetime.now()).split('.')[0],
+                    "time": message.get("time"),
+                    "date": message.get("date"),
+                    "face_name": row["who"],
+                    "source": message.get("data_source")
+                }
+                elastic_search.append(info)
+        return elastic_search
+
+
+class ViolentSearch:
+    """暴力搜索"""
+
+    @staticmethod
+    def runner(message: dict, df: pd.DataFrame):
+        violent_search = []
+        for _, row in df.iterrows():
+            info = {
+                **message,
+                "feature": json.dumps(row["feature"].tolist()),
+                "bbox": json.dumps(row["bbox"][0].tolist()),
+                "landmark": json.dumps(row["landmark"].tolist())
+            }
+            violent_search.append(info)
+        return violent_search
 
 
 class FaceProcess:
@@ -188,18 +199,32 @@ class FaceProcess:
         frame_path_list.sort(key=lambda x: int(x.stem))
         return list(map(os.fspath, frame_path_list))
 
-    def runner(self):
+    def runner(self, sacked_officials, special_person=None,
+               violent_search=None):
         logger.info("开始处理任务 {}".format(self.message['video_path']))
         tic = time.time()
         with GetFaceFeature(self.address) as gff:
+            bbox_list, violent_search_list, es_list = [], [], []
             for face_infos_list, images, filenames in gff.images_feature(
                     self.path):
                 df = get_df(face_infos_list)
+
                 df["frame_path"] = [filenames[i] for i in df["idx"]]
                 df["time"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem) / self.frame_rate)
+                if isinstance(sacked_officials, SackedOfficials):
+                    bbox_list.append(sacked_officials.runner(self.message, df))
+                else:
+                    raise ValueError("应该输入落马官员实例")
+                if isinstance(special_person, SpecialPerson):
+                    es_list += special_person.runner(self.message, df)
+                if isinstance(violent_search, ViolentSearch):
+                    violent_search_list += violent_search.runner(self.message,
+                                                                 df)
 
-            if str(self.message["is_search"]) == 1:
-                pass
-
+        if es_list:
+            pass
+        if violent_search_list:
+            pass
         toc = time.time()
+        logger.success(f"人脸识别完成{self.message}，用时{toc - tic}")

@@ -67,7 +67,7 @@ def get_df(face_infos_list):
         if feat_infos:
             for feat_info in feat_infos:
                 lst.append([idx, *feat_info])
-    df = pd.DataFrame(lst, columns=["idx", "feature", "bb", "landmark"])
+    df = pd.DataFrame(lst, columns=["idx", "feature", "bbox", "landmark"])
     return df
 
 
