@@ -51,6 +51,10 @@ def bbox_iou(bbox_a, bbox_b, offset=0):
     return area_i / (area_a[:, None] + area_b - area_i)
 
 
+class IouProcess:
+    pass
+
+
 if __name__ == '__main__':
     a = np.array([[1, 1, 3, 3]])
     b = np.array([[2, 2, 4, 4]])

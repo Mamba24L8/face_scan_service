@@ -11,9 +11,8 @@ import json
 import numpy as np
 import pandas as pd
 
-from scipy.spatial import cKDTree
 from sklearn.metrics.pairwise import cosine_similarity
-from typing import List, Dict, Tuple, Optional, Union, Generator, Set
+from typing import List, Dict, Tuple
 
 
 def format_data(data: List[Dict]) -> Tuple[List, np.array, List]:
@@ -133,6 +132,6 @@ class CompareFace:
         df["wid"] = [self.ids[x.item()] for x in coordinate[1]]
         df["sim"] = [dist[x, y] for x, y in zip(*coordinate)]
         # 排重，一张图片一个人只会出现一次， 保留sim最大的
-        df.sort_values(by=["sim"], inplace=True)
+        df.sort_values(by=["idx", "sim"], inplace=True)
         df.drop_duplicates(subset=['idx', 'who'], keep='last', inplace=True)
         return df

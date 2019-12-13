@@ -87,12 +87,35 @@ class TargetPerson(metaclass=ABCMeta):
 
     @abstractmethod
     def process(self, *args, **kwargs):
-        """针对不同人物进行处理过程的主程序"""
+        """针对不同人物进行处理过程（人脸对比过程）"""
         pass
 
     @abstractmethod
     def runner(self, *args, **kwargs):
+        """主程序"""
         pass
+
+
+def log_face(df, suspicion_face_dir):
+    idx_unique = df["idx"].unique()
+    lst = []
+    for i in idx_unique:
+        tmp_df = df[df["idx"] == i]
+        tmp_df.reset_index(drop=True, inplace=True)
+
+        frame_log = {"res": [], "id": tmp_df["frame_id"][0],
+                     "time": tmp_df["time_dot"][0]}
+        for _, row in tmp_df.iterrows():
+            frame_log["res"].append({
+                "personId": row["wid"], "personName": row["who"],
+                "sim": row["sim"], "bb": row["bbox"][0].tolist(),
+                "lm": row["landmark"].tolist(),
+                "frameUrl": os.path.join(suspicion_face_dir, row["who"],
+                                         Path(row["frame_path"]).name),
+                "tag": ""
+            })
+        lst.append(frame_log)
+    return lst
 
 
 class SackedOfficials(TargetPerson):
@@ -185,12 +208,14 @@ class FaceProcess:
         self.message = message
         self.address = address
         self.frame_rate = frame_rate
-        self.path = self.sort_filter_filename
+        self.path = self.sort_filter_filename()
 
     def get_time_dot(self, filename):
+        """获得时间戳"""
         return int(Path(filename).stem) / self.frame_rate
 
     def sort_filter_filename(self):
+        """对图片名字按照数字大小进行排序，并进行滤掉(按照电视台的等级，多少帧取一张图片)."""
         frame_dir = self.message["frame_dir"]
         interval = self.message["interval"]
         frame_path_list = list(Path(frame_dir).glob("*.jpg"))
@@ -200,11 +225,11 @@ class FaceProcess:
         return list(map(os.fspath, frame_path_list))
 
     def runner(self, sacked_officials, special_person=None,
-               violent_search=None):
+               violent_search=None, tool=None):
         logger.info("开始处理任务 {}".format(self.message['video_path']))
         tic = time.time()
         with GetFaceFeature(self.address) as gff:
-            bbox_list, violent_search_list, es_list = [], [], []
+            dfs, violent_search_list, es_list = pd.DataFrame(), [], []
             for face_infos_list, images, filenames in gff.images_feature(
                     self.path):
                 df = get_df(face_infos_list)
@@ -212,8 +237,10 @@ class FaceProcess:
                 df["frame_path"] = [filenames[i] for i in df["idx"]]
                 df["time"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem) / self.frame_rate)
+                df["frame_id"] = df["frame_path"].apply(
+                    lambda x: int(Path(x).stem))
                 if isinstance(sacked_officials, SackedOfficials):
-                    bbox_list.append(sacked_officials.runner(self.message, df))
+                    dfs = dfs.append(sacked_officials.runner(self.message, df))
                 else:
                     raise ValueError("应该输入落马官员实例")
                 if isinstance(special_person, SpecialPerson):
@@ -226,5 +253,7 @@ class FaceProcess:
             pass
         if violent_search_list:
             pass
+        if dfs:
+            pass
         toc = time.time()
-        logger.success(f"人脸识别完成{self.message}，用时{toc - tic}")
+        logger.success(f"人脸识别完成{self.message}\t识别人脸{len(dfs)}个\t用时{toc - tic}秒")

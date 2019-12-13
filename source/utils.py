@@ -7,9 +7,22 @@ Created on 12/5/19 10:54 AM
 @purpose：
 """
 import cv2
+import json
 import numpy as np
 
 from PIL import Image, ImageDraw, ImageFont
+
+
+def json_dumps(filename, data):
+    """
+
+    Parameters
+    ----------
+    filename : str, 路径
+    data : dict， 数据
+    """
+    with open(filename, "w") as f:
+        json.dump(data, f)
 
 
 def draw_box(image, bbox):
