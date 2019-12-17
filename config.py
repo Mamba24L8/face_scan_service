@@ -57,3 +57,9 @@ ELASTICSEARCH = {
     "index": "face_list_test",
     "type": "txt"
 }
+
+
+if __name__ == '__main__':
+    from easydict import EasyDict as edict
+    d = edict(MYSQL)
+    print(d.db.video_db)

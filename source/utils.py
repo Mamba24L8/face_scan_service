@@ -8,9 +8,14 @@ Created on 12/5/19 10:54 AM
 """
 import cv2
 import json
+import time
+import eventlet  # 导入eventlet这个模块
 import numpy as np
 
+from functools import wraps
 from PIL import Image, ImageDraw, ImageFont
+
+eventlet.monkey_patch()  # 必须加这条代码
 
 
 def json_dumps(filename, data):
