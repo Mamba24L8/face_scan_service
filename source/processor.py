@@ -274,3 +274,4 @@ class FaceProcess:
         toc = time.time()
         logger.success(
             f"人脸识别完成{self.message}\t识别人脸{len(df_list)}个\t用时{toc - tic}秒")
+        return df_list

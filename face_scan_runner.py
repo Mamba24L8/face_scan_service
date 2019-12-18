@@ -8,10 +8,14 @@ Created on 12/5/19 10:48 AM
 """
 import time
 import json
+import config
 
 from loguru import logger
 from easydict import EasyDict as edict
-from config import DEFAULT, MYSQL, REDIS, DOCKER, ELASTICSEARCH
+from source.processor import Tool, SackedOfficials, SpecialPerson, \
+    ViolentSearch, FaceProcess
+from config import MYSQL, REDIS, DOCKER, ELASTICSEARCH, \
+    frame_rate_grade
 
 
 class FaceWorkerRunner:
@@ -35,25 +39,59 @@ class FaceWorkerRunner:
         grade :
         is_search :
         """
-        dct = self.front_db.query_grade(channel_number)
-        if not isinstance(dct, dict):
-            dct = {}
-        return dct.get("grade", 1), dct.get("search_tv", 0)
+        hash_map = self.front_db.query_grade(channel_number)
+        if not isinstance(hash_map, dict):
+            hash_map = {}
+        return hash_map.get("grade", 1), hash_map.get("search_tv", 0)
 
     def runner(self):
+
         while True:
             message = self.redis_conn.rpop(self.queue)
+
             if not message:
                 logger.info("暂时没有任务，等待10s")
                 time.sleep(10)
                 continue
+
             message = json.loads(message)
             logger.info(f"取到一条人脸识别任务 {message}")
             # 开始执行任务，更改状态为1
             self.faceworker_db.set_status(message["id"], "face_status", 1)
-            message["grade"], message[
-                "is_search"] = self.get_grade_and_search_tv(message["chan_num"])
-            message = {
-                "interval": DEFAULT["frame_rate_grade"][str(message["grade"])],
+
+            grade, is_search = self.get_grade_and_search_tv(message["chan_num"])
+            hash_map = {
+                "grade": grade,
+                "is_search": is_search,
+                "interval": frame_rate_grade[str(grade)]
             }
-            pass
+            message.update(hash_map)
+            tool = Tool(message)
+
+            if int(is_search) == 1:
+                violent_search = ViolentSearch()
+                special_person = SpecialPerson(self.front_db, config.sim2search,
+                                               self.es_client)
+            else:
+                violent_search, special_person = None, None
+
+            sacked_officials = SackedOfficials(self.front_db, config.sim2fall)
+            processor = FaceProcess(message, config.address, config.frame_rate)
+
+            df_list = processor.runner(sacked_officials=sacked_officials,
+                                       special_person=special_person,
+                                       violent_search=violent_search,
+                                       tool=tool
+                                       )
+            # 　todo IoU排重、文件删除
+
+
+def runner():
+    def call():
+        return
+
+    return call
+
+
+if __name__ == '__main__':
+    runner()

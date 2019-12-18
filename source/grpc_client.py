@@ -170,12 +170,13 @@ class GetFaceFeature:
         except Exception as e:
             raise Exception(e)
 
-    def single_pic_feature(self, req):
+    def single_pic_feature(self, req, time_out=10):
         """
 
         Parameters
         ----------
         req : str, the request of grpc request
+        time_out : int
 
         Returns
         -------
@@ -187,7 +188,7 @@ class GetFaceFeature:
         try:
             response = self.stub.face_grpc(
                 face_grpc_pb2.face_grpcRequest(req=req),
-                timeout=10)
+                timeout=time_out)
             response_facerecog = facerecog_pb2.FaceRecogResponse()
             response_facerecog.ParseFromString(response.res)
 

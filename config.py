@@ -7,14 +7,13 @@ Created on 12/5/19 10:49 AM
 @purpose：
 """
 
-DEFAULT = {
-    "sim2fall": 0.5,
-    "sim2search": 0.6,
-    "whether_search": "yes",
-    "frame_rate": 6,
-    "frame_rate_grade": {"1": 1, "2": 1, "3": 3, "4": 18}
-}
+sim2fall = 0.5
+sim2search = 0.6
+whether_search = "yes"
+frame_rate = 6
+frame_rate_grade: {"1": 1, "2": 1, "3": 3, "4": 18}
 
+# MYSQL
 MYSQL = {
     "host": "10.97.34.206",
     "port": 3306,
@@ -34,6 +33,7 @@ MYSQL = {
     "charset": "utf8"
 }
 
+# redis配置文件
 REDIS = {
     "host": "localhost",
     "port": 6379,
@@ -46,6 +46,8 @@ REDIS = {
     }
 }
 
+# face_cpp docker
+address = ""
 DOCKER = {"docker-name": "10.107.193.162",
           "host": "10.107.193.162",
           "port": 8001
@@ -58,8 +60,8 @@ ELASTICSEARCH = {
     "type": "txt"
 }
 
-
 if __name__ == '__main__':
     from easydict import EasyDict as edict
+
     d = edict(MYSQL)
     print(d.db.video_db)
