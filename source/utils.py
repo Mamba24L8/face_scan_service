@@ -78,3 +78,21 @@ def draw_box_text(image, bbox, text):
     # 转换回OpenCV格式
     image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
     return image
+
+
+def save_image(image, bbox, text, filename):
+    """画框、标注名字、保存
+
+    Parameters
+    ----------
+    image : numpy.ndarray
+         Image with shape `H, W, 3`
+    bbox : numpy.ndarray
+        Bounding boxes with shape `N, 4`. Where `N` is the number of boxes.
+    text : str
+    filename : str
+        save image to filename
+    """
+    image = draw_box(image, bbox)
+    image = draw_box_text(image, bbox, text)
+    cv2.imwrite(filename, image)

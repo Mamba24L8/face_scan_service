@@ -20,6 +20,7 @@ from typing import Dict, List, Tuple
 from loguru import logger
 from source.compare_face import format_data, CompareFace, get_df
 from source.grpc_client import GetFaceFeature
+from source.utils import save_image
 
 
 class Tool:
@@ -136,8 +137,19 @@ class SackedOfficials(TargetPerson):
         # df = get_df(face_infos_list)
         return CompareFace(self.target_person_info, self.sim).compare_face(df)
 
-    def runner(self, message: dict, df: pd.DataFrame):
-        pass
+    def runner(self, message: dict, df: pd.DataFrame, images: np.ndarray,
+               tool: Tool):
+        """ 画框、标注名字、保存"""
+        df = self.process(df)
+        for index, row in df.iterrows():
+            idx, bbox, name = row["idx"], row["bbox"], row["who"]
+            person_folder = Path(tool.suspicion_dir, name)
+            if not person_folder.exists():
+                person_folder.mkdir()
+            save_path = os.fspath(
+                Path(person_folder, Path(row["frame_path"]).name))
+            save_image(images[:, :, :, idx], bbox, name, save_path)
+        return df
 
 
 class SpecialPerson:
@@ -229,7 +241,7 @@ class FaceProcess:
         logger.info("开始处理任务 {}".format(self.message['video_path']))
         tic = time.time()
         with GetFaceFeature(self.address) as gff:
-            dfs, violent_search_list, es_list = pd.DataFrame(), [], []
+            df_list, violent_search_list, es_list = [], [], []
             for face_infos_list, images, filenames in gff.images_feature(
                     self.path):
                 df = get_df(face_infos_list)
@@ -239,8 +251,10 @@ class FaceProcess:
                     lambda x: int(Path(x).stem) / self.frame_rate)
                 df["frame_id"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem))
+
                 if isinstance(sacked_officials, SackedOfficials):
-                    dfs = dfs.append(sacked_officials.runner(self.message, df))
+                    df_list.append(
+                        sacked_officials.runner(self.message, df, images, tool))
                 else:
                     raise ValueError("应该输入落马官员实例")
                 if isinstance(special_person, SpecialPerson):
@@ -253,7 +267,7 @@ class FaceProcess:
             pass
         if violent_search_list:
             pass
-        if dfs:
-            pass
+        if df_list:
+            df_list = pd.concat(df_list)
         toc = time.time()
         logger.success(f"人脸识别完成{self.message}\t识别人脸{len(dfs)}个\t用时{toc - tic}秒")

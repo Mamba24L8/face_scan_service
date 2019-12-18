@@ -108,7 +108,7 @@ class CompareFace:
             if feat_infos:
                 for feat_info in feat_infos:
                     lst.append([idx, *feat_info])
-        df = pd.DataFrame(lst, columns=["idx", "feature", "bb", "landmark"])
+        df = pd.DataFrame(lst, columns=["idx", "feature", "bbox", "landmark"])
         return df
 
     def compare_face(self, df: pd.DataFrame):
@@ -117,7 +117,7 @@ class CompareFace:
         Parameters
         ----------
         df : pd.DataFrame,
-             with columns=["idx", "feature", "bb", "landmark"]
+             with columns=["idx", "feature", "bbox", "landmark"]
 
         Returns
         -------
@@ -134,4 +134,5 @@ class CompareFace:
         # 排重，一张图片一个人只会出现一次， 保留sim最大的
         df.sort_values(by=["idx", "sim"], inplace=True)
         df.drop_duplicates(subset=['idx', 'who'], keep='last', inplace=True)
+        df.reset_index(drop=True) # 重置索引
         return df
