@@ -20,7 +20,7 @@ from typing import Dict, List, Tuple
 from loguru import logger
 from source.compare_face import format_data, CompareFace, get_df
 from source.grpc_client import GetFaceFeature
-from source.utils import save_image
+from source.utils import save_image, json_dump
 
 
 class Tool:
@@ -59,9 +59,10 @@ class Tool:
 
 
 class IouTask:
-    """获取Iou任务, 用于去重
+    """获取Iou任务, 用于去重 [弃用] 直接在faceworker中去重
 
     IoU： 交并比, intersection over union. 通常称为Jaccard系数, 描述两个边框的相似度.
+
     """
 
     def __init__(self, message: dict, tool: Tool):
@@ -247,16 +248,13 @@ class FaceProcess:
                 df = get_df(face_infos_list)
 
                 df["frame_path"] = [filenames[i] for i in df["idx"]]
-                df["time"] = df["frame_path"].apply(
-                    lambda x: int(Path(x).stem) / self.frame_rate)
                 df["frame_id"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem))
+                df["time"] = df["frame_id"] / self.frame_rate
 
-                if isinstance(sacked_officials, SackedOfficials):
-                    df_list.append(
-                        sacked_officials.runner(self.message, df, images, tool))
-                else:
-                    raise ValueError("应该输入落马官员实例")
+                df_list.append(
+                    sacked_officials.runner(self.message, df, images, tool))
+
                 if isinstance(special_person, SpecialPerson):
                     es_list += special_person.runner(self.message, df)
                 if isinstance(violent_search, ViolentSearch):
@@ -264,10 +262,15 @@ class FaceProcess:
                                                                  df)
 
         if es_list:
-            pass
+            special_person.es.bulk(es_list)
+            es_backup_file = tool.txt_dir.replace("log", "es")
+            json_dump(es_backup_file, es_list)
         if violent_search_list:
-            pass
+            violent_search_backup_file = tool.txt_dir.replace("log", "vio")
+            json_dump(violent_search_backup_file, violent_search_list)
         if df_list:
             df_list = pd.concat(df_list)
+            df_list.to_json(orient="records")
         toc = time.time()
-        logger.success(f"人脸识别完成{self.message}\t识别人脸{len(dfs)}个\t用时{toc - tic}秒")
+        logger.success(
+            f"人脸识别完成{self.message}\t识别人脸{len(df_list)}个\t用时{toc - tic}秒")

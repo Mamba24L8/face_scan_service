@@ -12,13 +12,14 @@ import time
 import eventlet  # 导入eventlet这个模块
 import numpy as np
 
+from loguru import logger
 from functools import wraps
 from PIL import Image, ImageDraw, ImageFont
 
 eventlet.monkey_patch()  # 必须加这条代码
 
 
-def json_dumps(filename, data):
+def json_dump(filename, data):
     """
 
     Parameters
@@ -28,6 +29,19 @@ def json_dumps(filename, data):
     """
     with open(filename, "w") as f:
         json.dump(data, f)
+
+
+def json_load(filename):
+    """
+
+    Parameters
+    ----------
+    filename : str, 路径
+    data : dict， 数据
+    """
+    with open(filename, "r") as f:
+        data = json.load(f)
+    return data
 
 
 def draw_box(image, bbox):
@@ -91,8 +105,31 @@ def save_image(image, bbox, text, filename):
         Bounding boxes with shape `N, 4`. Where `N` is the number of boxes.
     text : str
     filename : str
-        save image to filename
+        save image to filename, absolute path
+    
+    Examples
+    --------
+    >>> img_path = "/home/mamba/20180625/0028828.jpg"
+    >>> save_path = "/home/mamba/bb.jpg"
+    >>> import numpy as np
+    >>> img = cv2.imread(img_path)
+    >>> save_image(img, np.array([[136, 89, 198, 184]]), "科比", save_path)
+    True
     """
-    image = draw_box(image, bbox)
-    image = draw_box_text(image, bbox, text)
-    cv2.imwrite(filename, image)
+    try:
+        image = draw_box(image, bbox)
+        image = draw_box_text(image, bbox, text)
+        cv2.imwrite(filename, image)
+        return True
+    except Exception as e:
+        logger.error(f"保存图片失败， 错误原因{e}")
+        return False
+
+
+if __name__ == '__main__':
+    import doctest
+
+    doctest.testmod()
+    # img = draw_box(img, np.array([[136, 89, 198, 184]]))
+    # img = draw_box_text(img, np.array([[136, 89, 198, 184]]), "科比")
+    # cv2.imwrite("/home/mamba/bb.jpg", img)

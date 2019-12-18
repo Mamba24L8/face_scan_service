@@ -94,10 +94,9 @@ class DownloadPack(Command):
             req = requests.get(url=url, stream=True, timeout=(20, 200))
             total_size = int(req.headers.get("Content-Length"))
             with open(filename, "wb") as file:
-                if total_size is None:
-                    for chunk in req.iter_content(chunk_size=self.CHUNK_SIZE):
-                        if chunk:
-                            file.write(chunk)
+                for chunk in req.iter_content(chunk_size=self.CHUNK_SIZE):
+                    if chunk:
+                        file.write(chunk)
             logger.success(f"[下载{url}成功] 文件大小: {total_size} 保存路径: {filename}")
             return filename
         except requests.exceptions.ReadTimeout:
