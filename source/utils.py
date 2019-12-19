@@ -9,14 +9,30 @@ Created on 12/5/19 10:54 AM
 import cv2
 import json
 import time
-import eventlet  # 导入eventlet这个模块
 import numpy as np
 
 from loguru import logger
 from functools import wraps
 from PIL import Image, ImageDraw, ImageFont
 
-eventlet.monkey_patch()  # 必须加这条代码
+
+def execution_time(func):
+    """ Decorator that reports the execution time."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        logger.debug("{}:\t{}".format(func.__name__, end - start))
+        return result
+
+    return wrapper
+
+
+def get_host_ip():
+    """在docker中，获得宿主机的ip"""
+    pass
 
 
 def json_dump(filename, data):

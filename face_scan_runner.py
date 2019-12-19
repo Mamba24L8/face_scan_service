@@ -60,13 +60,11 @@ class FaceWorkerRunner:
             self.faceworker_db.set_status(message["id"], "face_status", 1)
 
             grade, is_search = self.get_grade_and_search_tv(message["chan_num"])
-            hash_map = {
+            message.update({
                 "grade": grade,
                 "is_search": is_search,
                 "interval": frame_rate_grade[str(grade)]
-            }
-            message.update(hash_map)
-            tool = Tool(message)
+            })
 
             if int(is_search) == 1:
                 violent_search = ViolentSearch()
@@ -75,6 +73,7 @@ class FaceWorkerRunner:
             else:
                 violent_search, special_person = None, None
 
+            tool = Tool(message)
             sacked_officials = SackedOfficials(self.front_db, config.sim2fall)
             processor = FaceProcess(message, config.address, config.frame_rate)
 

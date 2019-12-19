@@ -24,7 +24,31 @@ from source.utils import save_image, json_dump
 
 
 class Tool:
-    """创建识别出的目标人物的图片和信息"""
+    """创建识别出的目标人物的图片和信息路径
+
+    Examples
+    --------
+    >>> message = {'zip_file_path': 'http://10.242.189.120:8080/frames_zip/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts.tar',
+              'frames_dir': '/data/frames/201806/25/1126/20180625-181559_20180625-201605.mp4',
+              'audio_path': None,
+              'id': '47032',
+              'date': '2019-09-10 10:00:00',
+              'end_date': '2019-09-10 11:00:00',
+              'chan_num': '122139',
+              'chan_name': 'None',
+              'video_path': '/media/yzfbscc/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
+              'data_source': 'youxian',
+              'video_location': '/media/yzfbscc/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
+              'start_time': '2019-09-10 10:00:00',
+              'video_url': 'http://10.242.189.224:8080/data/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
+              'video_copy_path': '/data/videos/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
+              'fps': 25, 'resolution': [352, 288], 'task_id': 'a10aea6e-60c5-43d7-8c8f-cb697085ed4d', 'is_search': 1, 'grade': 3}
+    >>> tool = Tool(message=message)
+    >>> tool.suspicion_dir
+    '/data/suspicion_face/201806/25/1126/20180625-181559_20180625-201605.mp4'
+    >>> tool.txt_dir
+    '/data/txt/201806/25/1126/20180625-181559_20180625-201605.mp4/log.txt'
+    """
 
     def __init__(self, message: Dict, key: str = "frames_dir"):
         self.path = message.get(key)
@@ -265,12 +289,15 @@ class FaceProcess:
             special_person.es.bulk(es_list)
             es_backup_file = tool.txt_dir.replace("log", "es")
             json_dump(es_backup_file, es_list)
+
         if violent_search_list:
             violent_search_backup_file = tool.txt_dir.replace("log", "vio")
             json_dump(violent_search_backup_file, violent_search_list)
+
         if df_list:
             df_list = pd.concat(df_list)
             df_list.to_json(orient="records")
+
         toc = time.time()
         logger.success(
             f"人脸识别完成{self.message}\t识别人脸{len(df_list)}个\t用时{toc - tic}秒")

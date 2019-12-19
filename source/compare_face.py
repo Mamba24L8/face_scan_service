@@ -124,15 +124,15 @@ class CompareFace:
         df : pd.DataFrame
         """
         features = np.vstack(df["feature"].values)
-        dist = cosine_similarity(features, self.features)
-        coordinate = np.where(dist > self.threshold)
+        distance = cosine_similarity(features, self.features)
+        coordinate = np.where(distance > self.threshold)
         # df["max_ind"], df["max_dist"] = dist.argmax(axis=1), dist.max(axis=1)
         df = df.loc[coordinate[0]]
         df["who"] = [self.names[x.item()] for x in coordinate[1]]
         df["wid"] = [self.ids[x.item()] for x in coordinate[1]]
-        df["sim"] = [dist[x, y] for x, y in zip(*coordinate)]
+        df["sim"] = [distance[x, y] for x, y in zip(*coordinate)]
         # 排重，一张图片一个人只会出现一次， 保留sim最大的
         df.sort_values(by=["idx", "sim"], inplace=True)
         df.drop_duplicates(subset=['idx', 'who'], keep='last', inplace=True)
-        df.reset_index(drop=True) # 重置索引
+        df.reset_index(drop=True, inplace=True)  # 重置索引
         return df

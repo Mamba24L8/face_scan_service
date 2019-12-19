@@ -148,7 +148,18 @@ def get_request(filename: str) -> Tuple[str, np.ndarray]:
 
 
 class GetFaceFeature:
+    """
 
+    Examples
+    --------
+    >>> from glob import glob
+    >>> import pickle
+    >>> path = glob("/home/mamba/20180625/*.jpg")[:400]
+    >>> with GetFaceFeature(address="223.71.97.245:8001") as gff:
+    ...     for x in gff.images_feature(path=path, chunk_size=20):
+    >>>         with open("/home/mamba/Projects/face_scan_service/data/r.pkl", "wb") as f:
+    >>>             pickle.dump(f)
+    """
     def __init__(self, address, timeout=10):
         self.address = address
         self.timeout = timeout
@@ -170,7 +181,7 @@ class GetFaceFeature:
         except Exception as e:
             raise Exception(e)
 
-    def single_pic_feature(self, req, time_out=10):
+    def single_pic_feature(self, req):
         """
 
         Parameters
@@ -188,7 +199,7 @@ class GetFaceFeature:
         try:
             response = self.stub.face_grpc(
                 face_grpc_pb2.face_grpcRequest(req=req),
-                timeout=time_out)
+                timeout=self.timeout)
             response_facerecog = facerecog_pb2.FaceRecogResponse()
             response_facerecog.ParseFromString(response.res)
 
@@ -210,7 +221,7 @@ class GetFaceFeature:
     def images_feature(self, path, chunk_size=2000, max_workers=None):
         for filenames in chunked(path, chunk_size):
             image_iter = ImageIter(filenames)
-            _requests = GenerateRequest(image_iter)
+            _requests = GenerateRequest(image_iter).generate_requests()
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 face_infos_list = list(
                     executor.map(self.single_pic_feature, _requests))
