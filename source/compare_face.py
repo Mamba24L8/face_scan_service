@@ -86,7 +86,7 @@ class CompareFace:
 
         Returns
         -------
-            余弦相似度
+        numpy.ndarray : 余弦相似度
         """
         return cosine_similarity(matrix, self.features)
 

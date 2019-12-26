@@ -219,6 +219,21 @@ class GetFaceFeature:
             return None
 
     def images_feature(self, path, chunk_size=2000, max_workers=None):
+        """
+
+        Parameters
+        ----------
+        path : list,
+            存放图片的位置列表
+        chunk_size : int,
+            一次处理图片的数量
+        max_workers : int,
+            线程数
+
+        Returns
+        -------
+
+        """
         for filenames in chunked(path, chunk_size):
             image_iter = ImageIter(filenames)
             _requests = GenerateRequest(image_iter).generate_requests()

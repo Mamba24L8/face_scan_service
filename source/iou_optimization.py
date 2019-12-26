@@ -79,6 +79,7 @@ class IouProcess:
 
     def __init__(self, threshold, fps):
         """人脸去重
+        规则： 前一个与后一个iou值大于阈值、时间相差1800秒内
 
         Parameters
         ----------
@@ -90,6 +91,7 @@ class IouProcess:
 
     def process(self, df):
         n_row = len(df)
+
         if n_row == 0:
             return pd.DataFrame()
 
@@ -113,12 +115,14 @@ class IouProcess:
     def runner(self, df, message, web_db, tool):
         if not df:
             return
+
         names = set(df["who"])
         result = []
         for name in names:
             tmp_df = df[df["who"] == name]
             result.append(self.process(tmp_df))
         result = pd.concat(result)
+
         for index, row in result.iterrows():
             dct = {
                 "date": calculate_current_time(message["date"], row["time"]),
