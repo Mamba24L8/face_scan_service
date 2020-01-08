@@ -6,6 +6,7 @@ Created on 12/5/19 10:54 AM
 
 @purpose：
 """
+import os
 import cv2
 import json
 import time
@@ -28,6 +29,20 @@ def execution_time(func):
         return result
 
     return wrapper
+
+
+def get_file_size(filename):
+    """ 获得文件大小, 保留2位小数
+
+    Parameters
+    ----------
+    filename : str,
+        文件名字
+    Returns
+    -------
+    文件大小, 单位为MB
+    """
+    return round(os.path.getsize(filename) / 1024 / 1024, 2)
 
 
 def get_host_ip():

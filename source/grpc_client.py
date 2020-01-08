@@ -33,21 +33,24 @@ def sort_filename(frame_dir: str) -> List[str]:
 class ImageIter:
     """图片迭代器"""
 
-    def __init__(self, image_files: List, shape: Tuple = (389, 500, 3),
-                 max_workers: int = MAX_WORKERS):
+    def __init__(self, image_files: List, shape=None,
+                 max_workers: int = 8):
         """
 
         Parameters
         ----------
         image_files : list,
             image files
-        shape : tuple of int, default (389, 500, 3)
+        shape : tuple of int, default None
             image with shape: default (389, 500, 3), single image's shape
         max_workers : int, default is None
             number of thread pool
         """
         self.image_files = image_files
-        self.shape = (*shape, len(self.image_files))
+        if shape:
+            self.shape = (*shape, len(self.image_files))
+        else:
+            self.shape = (*self.get_shape(), len(self.image_files))
         self.max_workers = max_workers
         self.mat = np.zeros(shape=self.shape, dtype=np.uint8)
 
@@ -60,6 +63,13 @@ class ImageIter:
     def __len__(self):
         return len(self.image_files)
 
+    def get_shape(self):
+        image_path = self.image_files[0]
+        shape = cv2.imread(image_path).shape
+        if shape[2] != 3:
+            raise ValueError("图片不是三维")
+        return shape
+
     def image_loader(self):
         """ load image with thread pool
         thread pool is faster than multiprocess pool
@@ -67,7 +77,7 @@ class ImageIter:
         Returns
         -------
         mat : numpy.ndarray,
-            with shape: (389, 500, 3, len(image_files))
+            with shape: (xxx, 500, 3, len(image_files))
         """
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future = executor.map(cv2.imread, self.image_files)
@@ -160,6 +170,7 @@ class GetFaceFeature:
     >>>         with open("/home/mamba/Projects/face_scan_service/data/r.pkl", "wb") as f:
     >>>             pickle.dump(f)
     """
+
     def __init__(self, address, timeout=10):
         self.address = address
         self.timeout = timeout

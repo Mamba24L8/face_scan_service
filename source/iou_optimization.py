@@ -113,7 +113,7 @@ class IouProcess:
         return new_df
 
     def runner(self, df, message, web_db, tool):
-        if not df:
+        if df.empty:
             return
 
         names = set(df["who"])

@@ -212,23 +212,26 @@ class SpecialPerson:
         elastic_search = []
         df = self.process(df)
 
-        if df:
-            video_url = '/'.join(message['video_path'].split('/')[-5:])
-            for _, row in df.iterrows():
-                if row["wid"] is not None:
-                    info = {
-                        "frame_url": message.get("frame_path"),
-                        "video_name": os.path.basename(video_url),
-                        "video_url": video_url,
-                        "channel_id": message.get("chan_num"),
-                        "channel_name": message.get("chan_name"),
-                        "create_time": str(datetime.now()).split('.')[0],
-                        "time": message.get("time"),
-                        "date": message.get("date"),
-                        "face_name": row["who"],
-                        "source": message.get("data_source")
-                    }
-                    elastic_search.append(info)
+        if df.empty:
+            return elastic_search
+
+        # if not df.empty:
+        video_url = '/'.join(message['video_path'].split('/')[-5:])
+        for _, row in df.iterrows():
+            if row["wid"] is not None:
+                info = {
+                    "frame_url": message.get("frame_path"),
+                    "video_name": os.path.basename(video_url),
+                    "video_url": video_url,
+                    "channel_id": message.get("chan_num"),
+                    "channel_name": message.get("chan_name"),
+                    "create_time": str(datetime.now()).split('.')[0],
+                    "time": message.get("time"),
+                    "date": message.get("date"),
+                    "face_name": row["who"],
+                    "source": message.get("data_source")
+                }
+                elastic_search.append(info)
         return elastic_search
 
 
@@ -272,10 +275,10 @@ class FaceProcess:
         frame_path_list.sort(key=lambda x: int(x.stem))
         return list(map(os.fspath, frame_path_list))
 
-    def runner(self, sacked_officials,
+    def runner(self, tool,
+               sacked_officials,
                special_person=None,
-               violent_search=None,
-               tool=None):
+               violent_search=None):
         """ 人脸识别、结果数据存储
 
         Parameters
@@ -296,6 +299,9 @@ class FaceProcess:
             for face_infos_list, images, files in gff.images_feature(self.path):
 
                 df = get_df(face_infos_list)
+
+                if df.empty:
+                    continue
                 df["frame_path"] = [files[i] for i in df["idx"]]
                 df["frame_id"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem))

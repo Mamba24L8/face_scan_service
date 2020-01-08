@@ -92,7 +92,7 @@ class DownloadPack(Command):
     def _download(self, url, filename):
         try:
             req = requests.get(url=url, stream=True, timeout=(20, 200))
-            total_size = int(req.headers.get("Content-Length"))
+            # total_size = int(req.headers.get("Content-Length"))
             with open(filename, "wb") as file:
                 for chunk in req.iter_content(chunk_size=self.CHUNK_SIZE):
                     if chunk:
@@ -105,10 +105,9 @@ class DownloadPack(Command):
         except requests.exceptions.ConnectTimeout:
             logger.info(f"[网络连接超时] 文件{url}")
             raise ValueError(f"下载失败, 文件{url}")
-
-    def undo(self):
-        if Path(self.filename).exists():
-            os.remove(self.filename)
+        except Exception as e:
+            logger.info(f"[未知错误] 文件{url}")
+            raise Exception(e)
 
 
 class UnPackTarFile(Command):
@@ -132,11 +131,6 @@ class UnPackTarFile(Command):
         except Exception as e:
             logger.info(f"[解包{filename}] 报错 {e}")
             raise Exception(e)
-
-    def undo(self):
-        path = Path(self.extract_dir, Path(self.filename).stem)
-        if path.exists():
-            os.removedirs(path)
 
 
 def push_info2redis(message, redis_client, key, queue_size):

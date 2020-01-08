@@ -56,6 +56,7 @@ class FaceWorkerRunner:
 
             message = json.loads(message)
             logger.info(f"取到一条人脸识别任务 {message}")
+            tic = time.time()
             # 开始执行任务，更改状态为1
             self.faceworker_db.set_status(message["id"], "face_status", 1)
 
@@ -83,6 +84,7 @@ class FaceWorkerRunner:
                                        tool=tool
                                        )
             # 　todo IoU排重、文件删除
+            logger.success(f"识别成功， 用时{time.time() - tic}秒")
 
 
 def runner():
