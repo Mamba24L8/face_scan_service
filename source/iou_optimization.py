@@ -124,7 +124,7 @@ class IouProcess:
         result = pd.concat(result)
 
         for index, row in result.iterrows():
-            dct = {
+            hash_map = {
                 "date": calculate_current_time(message["date"], row["time"]),
                 "video_path": message["video_path"],
                 "data_source": message["data_source"],
@@ -137,7 +137,7 @@ class IouProcess:
                 "sim": row["sim"],
                 "time_dot": row["time"]
             }
-            web_db.insert2face_details(dct)
+            web_db.insert2face_details(hash_map)
 
 
 if __name__ == '__main__':

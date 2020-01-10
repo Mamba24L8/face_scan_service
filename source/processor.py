@@ -8,19 +8,15 @@ Created on 12/5/19 10:53 AM
 """
 import os
 import time
-import json
-import numpy as np
 import pandas as pd
 
 from pathlib import Path
-from datetime import datetime
-
-from abc import ABCMeta, abstractmethod
-from typing import Dict, List, Tuple
+from typing import Dict
 from loguru import logger
-from source.compare_face import format_data, CompareFace, get_df
+from source.compare_face import get_df
 from source.grpc_client import GetFaceFeature
-from source.utils import save_image, json_dump
+from source.utils import json_dump
+from source.target_person import SackedOfficials, SpecialPerson, ViolentSearch
 
 
 class Tool:
@@ -98,30 +94,6 @@ class IouTask:
             raise ValueError("任务消息不正确")
 
 
-class TargetPerson(metaclass=ABCMeta):
-    """人物对象的处理基类"""
-
-    @abstractmethod
-    def person_info_loader(self, *args, **kwargs):
-        """从数据库中加载人物信息并进行格式化
-
-        See Also
-        --------
-            format_data
-        """
-        pass
-
-    @abstractmethod
-    def process(self, *args, **kwargs):
-        """针对不同人物进行处理过程（人脸对比过程）"""
-        pass
-
-    @abstractmethod
-    def runner(self, *args, **kwargs):
-        """主程序"""
-        pass
-
-
 def log_face(df, suspicion_face_dir):
     idx_unique = df["idx"].unique()
     lst = []
@@ -142,114 +114,6 @@ def log_face(df, suspicion_face_dir):
             })
         lst.append(frame_log)
     return lst
-
-
-class SackedOfficials(TargetPerson):
-    """落马官员"""
-
-    def __init__(self, db, sim):
-        """
-        Parameters
-        ----------
-        db : instance os mysql, 用于查找特定人物
-        sim ： float, 相似度阈值
-        """
-        self.db = db
-        self.sim = sim
-        self.target_person_info = self.person_info_loader()
-
-    def person_info_loader(self, field="use_face", status=1):
-        sacked_officials_list = self.db.query_person_list(field, 1)
-        return format_data(sacked_officials_list)
-
-    def process(self, df: pd.DataFrame):
-        # df = get_df(face_infos_list)
-        return CompareFace(self.target_person_info, self.sim).compare_face(df)
-
-    def runner(self, message: dict, df: pd.DataFrame, images: np.ndarray,
-               tool: Tool):
-        """ 画框、标注名字、保存"""
-        df = self.process(df)
-        for index, row in df.iterrows():
-            idx, bbox, name = row["idx"], row["bbox"], row["who"]
-
-            person_folder = Path(tool.suspicion_dir, name)
-            if not person_folder.exists():
-                person_folder.mkdir()
-
-            save_path = os.fspath(
-                Path(person_folder, Path(row["frame_path"]).name))
-            save_image(images[:, :, :, idx], bbox, name, save_path)
-        return df
-
-
-class SpecialPerson:
-    """AI搜索"""
-
-    def __init__(self, db, sim, es):
-        """
-
-        Parameters
-        ----------
-        db : instance os mysql, 用于查找特定人物
-        sim ： float, 相似度阈值
-        es : instance of elasticsearch, 数据输出到es中
-        """
-        self.db = db
-        self.sim = sim
-        self.es = es
-        self.target_person_info = self.person_info_loader()
-
-    def person_info_loader(self, field="use_ai", status=1):
-        special_person_list = self.db.query_person_list(field, status)
-        return format_data(special_person_list)
-
-    def process(self, df: pd.DataFrame):
-        # df = get_df(face_infos_list)
-        return CompareFace(self.target_person_info, self.sim).compare_face(df)
-
-    def runner(self, message: Dict, df: pd.DataFrame):
-        elastic_search = []
-        df = self.process(df)
-
-        if df.empty:
-            return elastic_search
-
-        # if not df.empty:
-        video_url = '/'.join(message['video_path'].split('/')[-5:])
-        for _, row in df.iterrows():
-            if row["wid"] is not None:
-                info = {
-                    "frame_url": message.get("frame_path"),
-                    "video_name": os.path.basename(video_url),
-                    "video_url": video_url,
-                    "channel_id": message.get("chan_num"),
-                    "channel_name": message.get("chan_name"),
-                    "create_time": str(datetime.now()).split('.')[0],
-                    "time": message.get("time"),
-                    "date": message.get("date"),
-                    "face_name": row["who"],
-                    "source": message.get("data_source")
-                }
-                elastic_search.append(info)
-        return elastic_search
-
-
-class ViolentSearch:
-    """暴力搜索"""
-
-    @staticmethod
-    def runner(message: dict, df: pd.DataFrame):
-        violent_search = []
-        for _, row in df.iterrows():
-            info = {
-                **message,
-                "feature": json.dumps(row["feature"].tolist()),
-                "bbox": json.dumps(row["bbox"][0].tolist()),
-                "landmark": json.dumps(row["landmark"].tolist())
-            }
-            violent_search.append(info)
-        return violent_search
 
 
 class FaceProcess:
@@ -276,7 +140,7 @@ class FaceProcess:
         return list(map(os.fspath, frame_path_list))
 
     def runner(self, tool,
-               sacked_officials,
+               sacked_officials: SackedOfficials,
                special_person=None,
                violent_search=None):
         """ 人脸识别、结果数据存储
@@ -288,15 +152,13 @@ class FaceProcess:
         violent_search : instances of ViolentSearch
         tool : instances of Tool
 
-        Returns
-        -------
-
         """
         logger.info("开始处理任务 {}".format(self.message['video_path']))
         tic = time.time()
         with GetFaceFeature(self.address) as gff:
             df_list, violent_search_list, es_list = [], [], []
-            for face_infos_list, images, files in gff.images_feature(self.path):
+            for face_infos_list, images, files in gff.images_feature(
+                    self.path):
 
                 df = get_df(face_infos_list)
 
