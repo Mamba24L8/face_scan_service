@@ -10,13 +10,20 @@ import os
 import time
 import pandas as pd
 
+from random import sample
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 from loguru import logger
 from source.compare_face import get_df
 from source.grpc_client import GetFaceFeature
-from source.utils import json_dump
+from source.utils import json_dump, get_gcd
 from source.target_person import SackedOfficials, SpecialPerson, ViolentSearch
+
+try:
+    from more_itertools import chunked
+except ImportError:
+    logger.debug("The package that is more_itertools is not found")
+    from source.utils import chunked
 
 
 class Tool:
@@ -118,52 +125,81 @@ def log_face(df, suspicion_face_dir):
 
 class FaceProcess:
 
-    def __init__(self, message, address, frame_rate):
+    def __init__(self, message, address, frame_rate, pattern="*.jpg"):
+        """
+
+        Parameters
+        ----------
+        message : dict
+        address : str, facecpp's ip
+        frame_rate : int or float, 一秒分帧数
+        """
         self.message = message
         self.address = address
         self.frame_rate = frame_rate
-        self.path = self.sort_filter_filename()
+        self.path = self.sort_filter_filename(pattern)
 
     def get_time_dot(self, filename):
         """获得时间戳"""
+
         return int(Path(filename).stem) / self.frame_rate
 
-    def sort_filter_filename(self):
-        """对图片名字按照数字大小进行排序，并进行滤掉(按照电视台的等级，多少帧取一张图片)."""
+    def sort_filter_filename(self, pattern="*.jpg") -> List:
+        """对图片名字按照数字大小进行排序，并进行滤掉(按照电视台的等级，多少帧取一张图片).
+        """
         frame_dir = self.message["frame_dir"]
-        interval = self.message["interval"]
+        interval = int(self.message["interval"])
+        frame_paths = list(Path(frame_dir).glob(pattern))
+        frame_paths.sort(key=lambda x: int(x.stem))
 
-        frame_path_list = list(Path(frame_dir).glob("*.jpg"))
-        frame_path_list = list(filter(lambda x: int(x.stem) % interval != 0,
-                                      frame_path_list))
-        frame_path_list.sort(key=lambda x: int(x.stem))
-        return list(map(os.fspath, frame_path_list))
+        # 对于interval是整数时
+        if interval == 1:
+            return list(map(os.fspath, frame_paths))
+        if interval == int(interval):
+            frame_paths = list(filter(lambda x: int(x.stem) % interval == 0,
+                                      frame_paths))
+            return list(map(os.fspath, frame_paths))
+
+        # 对于interval是分数时
+        frame_paths_chosen = []
+        num_image = int(self.frame_rate * interval)
+        for frame_path in chunked(frame_paths, num_image):
+            gcd = get_gcd(self.frame_rate, num_image)
+            rate, num = int(self.frame_rate / gcd), int(num_image / gcd)
+            for frames in chunked(frame_path, num):
+                size = len(frames)
+
+                if size >= rate:
+                    frame_paths_chosen.extend(sample(frames, rate))
+                else:
+                    frame_paths_chosen.extend(sample(frames, size))
+        frame_paths_chosen.sort(key=lambda x: int(x.stem))
+        return list(map(os.fspath, frame_paths_chosen))
 
     def runner(self, tool,
                sacked_officials: SackedOfficials,
                special_person=None,
-               violent_search=None):
+               violent_search=None,
+               **kwargs):
         """ 人脸识别、结果数据存储
 
         Parameters
         ----------
-        sacked_officials : instances of SackedOfficials
-        special_person : instances of SpecialPerson
-        violent_search : instances of ViolentSearch
         tool : instances of Tool
+        sacked_officials : instances of SackedOfficials, 落马官员
+        special_person : instances of SpecialPerson,  AI搜索
+        violent_search : instances of ViolentSearch, 暴力检索
 
         """
         logger.info("开始处理任务 {}".format(self.message['video_path']))
         tic = time.time()
-        with GetFaceFeature(self.address) as gff:
-            df_list, violent_search_list, es_list = [], [], []
-            for face_infos_list, images, files in gff.images_feature(
-                    self.path):
-
-                df = get_df(face_infos_list)
-
-                if df.empty:
+        with GetFaceFeature(self.address, max_workers=None) as gff:
+            df_list, violent_search_list, save2es_list = [], [], []
+            for face_list, images, files in gff.images_feature(self.path):
+                df = get_df(face_list)
+                if df.empty:  # pandas不能直接用 if df
                     continue
+
                 df["frame_path"] = [files[i] for i in df["idx"]]
                 df["frame_id"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem))
@@ -173,17 +209,23 @@ class FaceProcess:
                     sacked_officials.runner(self.message, df, images, tool))
 
                 if isinstance(special_person, SpecialPerson):
-                    es_list += special_person.runner(self.message, df)
+                    save2es_list += special_person.runner(self.message, df)
                 if isinstance(violent_search, ViolentSearch):
                     violent_search_list += violent_search.runner(self.message,
                                                                  df)
+                for instance in kwargs:
+                    if hasattr(instance, "runner"):
+                        instance.runner(self.message, df)
+                    else:
+                        raise ValueError("该对象没有‘runner’方法")
 
-        if es_list:
-            special_person.es.bulk(es_list)
+        if save2es_list:  # todo 本地备份
+            # 需要
+            special_person.es.bulk(save2es_list)
             es_backup_file = tool.txt_dir.replace("log", "es")
-            json_dump(es_backup_file, es_list)
+            json_dump(es_backup_file, save2es_list)
 
-        if violent_search_list:
+        if violent_search_list:  # 暴力检索本地备份
             violent_search_backup_file = tool.txt_dir.replace("log", "vio")
             json_dump(violent_search_backup_file, violent_search_list)
 

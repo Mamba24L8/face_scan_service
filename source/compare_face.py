@@ -64,8 +64,7 @@ def get_df(face_infos_list):
     lst = []
     for idx, feat_infos in enumerate(face_infos_list):
         if feat_infos:
-            for feat_info in feat_infos:
-                lst.append([idx, *feat_info])
+            lst.extend([[idx, *feat_info] for feat_info in feat_infos])
     df = pd.DataFrame(lst, columns=["idx", "feature", "bbox", "landmark"])
     return df
 
@@ -96,6 +95,7 @@ class CompareFace:
 
         Parameters
         ----------
+
         face_infos_list : list
             一张图片的grpc返回结果为list的一个元素
 
@@ -123,6 +123,9 @@ class CompareFace:
         -------
         df : pd.DataFrame
         """
+        if df.empty:
+            return df
+
         features = np.vstack(df["feature"].values)
         distance = cosine_similarity(features, self.features)
         coordinate = np.where(distance > self.threshold)

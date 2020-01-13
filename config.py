@@ -9,9 +9,11 @@ Created on 12/5/19 10:49 AM
 
 sim2fall = 0.5
 sim2search = 0.6
+key_person_similarity = 0.5
+
 whether_search = "yes"
 frame_rate = 6
-frame_rate_grade: {"1": 1, "2": 1, "3": 3, "4": 18}
+frame_rate_grade: {"1": 1, "2": 1, "3": 3, "4": 6}
 
 # MYSQL
 MYSQL = {

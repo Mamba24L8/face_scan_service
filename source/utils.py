@@ -12,9 +12,25 @@ import json
 import time
 import numpy as np
 
+from pathlib import Path
 from loguru import logger
-from functools import wraps
+from itertools import islice
+from functools import wraps, partial, lru_cache
 from PIL import Image, ImageDraw, ImageFont
+
+
+def take(n, iterable):
+    return list(islice(iterable, n))
+
+
+def chunked(iterable, n):
+    return iter(partial(take, n, iter(iterable)), [])
+
+
+@lru_cache()
+def get_gcd(m, n):
+    """最大公约数"""
+    return m if n == 0 else get_gcd(n, m % n)
 
 
 def execution_time(func):
@@ -147,6 +163,8 @@ def save_image(image, bbox, text, filename):
     >>> save_image(img, np.array([[136, 89, 198, 184]]), "科比", save_path)
     True
     """
+    if isinstance(image, str) and Path(image).exists():  # 直接输入图片地址也可以
+        image = cv2.imread(image)
     try:
         image = draw_box(image, bbox)
         image = draw_box_text(image, bbox, text)

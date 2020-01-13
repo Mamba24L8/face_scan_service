@@ -13,12 +13,16 @@ import numpy as np
 
 from base64 import b64encode
 from pathlib import Path
-from functools import singledispatch
-from more_itertools import chunked
 from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 from typing import Tuple, List, Optional, Sequence, Generator, Iterator
 from source.lib import face_grpc_pb2, face_grpc_pb2_grpc, facerecog_pb2
+
+try:
+    from more_itertools import chunked
+except ImportError:
+    logger.debug("The package that is more_itertools is not found")
+    from source.utils import chunked
 
 MAX_WORKERS = 8
 
@@ -30,11 +34,29 @@ def sort_filename(frame_dir: str) -> List[str]:
     return list(map(os.fspath, frame_path_list))
 
 
+def get_request(filename: str) -> Tuple[str, np.ndarray]:
+    """使用base64对图片转换
+
+    Parameters
+    ----------
+    filename : str, 单个图片路径
+
+    Returns
+    -------
+    req : str,
+          Encode the bytes-like object s using Base64 and return a bytes object
+    img : np.ndarray,
+          brief Loads an image from a file
+    """
+    img = cv2.imread(filename)
+    img_cv_encode = cv2.imencode(".jpg", img)[1]
+    return b64encode(img_cv_encode), img
+
+
 class ImageIter:
     """图片迭代器"""
 
-    def __init__(self, image_files: List, shape=None,
-                 max_workers: int = 8):
+    def __init__(self, image_files: List, max_workers: int = 8):
         """
 
         Parameters
@@ -47,11 +69,9 @@ class ImageIter:
             number of thread pool
         """
         self.image_files = image_files
-        if shape:
-            self.shape = (*shape, len(self.image_files))
-        else:
-            self.shape = (*self.get_shape(), len(self.image_files))
-        self.max_workers = max_workers
+        size = len(self.image_files)
+        self.shape = (*self.get_shape(), size)
+        self.max_workers = min(max_workers, size)
         self.mat = np.zeros(shape=self.shape, dtype=np.uint8)
 
     def __iter__(self):
@@ -86,32 +106,6 @@ class ImageIter:
         return self.mat
 
 
-def image_loader(image_files: list, shape=(389, 500, 3), max_workers=None):
-    """ load images by thread pool
-
-    Parameters
-    ----------
-    image_files : list,
-        image files
-    shape : tuple of int, default (389, 500, 3)
-        image with shape: default (389, 500, 3), single image's shape
-    max_workers : int, default is None
-        number of thread pool
-
-    Returns
-    -------
-    mat : numpy.ndarray,
-        with shape: (389, 500, 3, len(image_files))
-    """
-    shape = (*shape, len(image_files))
-    mat = np.zeros(shape=shape, dtype=np.uint8)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        res = executor.map(cv2.imread, image_files)
-    for idx, img in enumerate(res):
-        mat[:, :, :, idx] = img
-    return mat
-
-
 class GenerateRequest:
     """Grpc requests of a chunk size image"""
 
@@ -125,7 +119,7 @@ class GenerateRequest:
             number of thread pool
         """
         self.image_iter = image_iter
-        self.max_workers = max_workers
+        self.max_workers = min(max_workers, len(image_iter))
 
     @staticmethod
     def encode_image(image: np.ndarray):
@@ -136,25 +130,6 @@ class GenerateRequest:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future = executor.map(self.encode_image, self.image_iter)
         return list(future)
-
-
-def get_request(filename: str) -> Tuple[str, np.ndarray]:
-    """使用base64对图片转换
-
-    Parameters
-    ----------
-    filename : str, 单个图片路径
-
-    Returns
-    -------
-    req : str,
-          Encode the bytes-like object s using Base64 and return a bytes object
-    img : np.ndarray,
-          brief Loads an image from a file
-    """
-    img = cv2.imread(filename)
-    img_cv_encode = cv2.imencode(".jpg", img)[1]
-    return b64encode(img_cv_encode), img
 
 
 class GetFaceFeature:
@@ -171,9 +146,18 @@ class GetFaceFeature:
     >>>             pickle.dump(f)
     """
 
-    def __init__(self, address, timeout=10):
+    def __init__(self, address, timeout=10, max_workers=None):
+        """
+
+        Parameters
+        ----------
+        address : str, facecpp地址
+        timeout ： int, 网络请求超时
+        max_workers ： int, 线程数
+        """
         self.address = address
         self.timeout = timeout
+        self.max_workers = max_workers
         self.channel = grpc.insecure_channel(self.address)
         self.stub = face_grpc_pb2_grpc.face_grpcServiceClsStub(self.channel)
 
@@ -229,7 +213,7 @@ class GetFaceFeature:
             logger.error(f"人脸特征获取错误，请检查人脸docker服务是否正常，错误信息 {e}")
             return None
 
-    def images_feature(self, path, chunk_size=2000, max_workers=None):
+    def images_feature(self, path, chunk_size=2000):
         """
 
         Parameters
@@ -238,17 +222,14 @@ class GetFaceFeature:
             存放图片的位置列表
         chunk_size : int,
             一次处理图片的数量
-        max_workers : int,
-            线程数
-
-        Returns
-        -------
-
         """
         for filenames in chunked(path, chunk_size):
             image_iter = ImageIter(filenames)
-            _requests = GenerateRequest(image_iter).generate_requests()
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            workers = min(self.max_workers, len(image_iter))
+            requests = GenerateRequest(image_iter, workers).generate_requests()
+            with ThreadPoolExecutor(max_workers=workers) as executor:
                 face_infos_list = list(
-                    executor.map(self.single_pic_feature, _requests))
+                    executor.map(self.single_pic_feature, requests))
+            # image_iter中的mat已经被GenerateRequest修改, 所以可以直接调用image_iter.mat
+            # 注意python中的函数参数传递
             yield face_infos_list, image_iter.mat, filenames

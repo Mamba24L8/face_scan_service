@@ -12,12 +12,12 @@ import requests
 import pandas as pd
 import numpy as np
 
+from retry import retry
+from loguru import logger
 from datetime import datetime
 from pathlib import Path
 from numbers import Number
-from retry import retry
 from typing import Dict
-from loguru import logger
 from functools import lru_cache
 from abc import ABCMeta, abstractmethod
 from moviepy.editor import VideoFileClip
@@ -168,6 +168,7 @@ class SpecialPerson(TargetPerson):
                     "source": message.get("data_source")
                 }
                 elastic_search.append(info)
+        # todo 在这里将数据保存到es中
         return elastic_search
 
 
