@@ -13,7 +13,7 @@ key_person_similarity = 0.5
 
 whether_search = "yes"
 frame_rate = 6
-frame_rate_grade: {"1": 1, "2": 1, "3": 3, "4": 6}
+frame_rate_grade: {"1": 1, "2": 2/3, "3": 3, "4": 6}
 
 # MYSQL
 MYSQL = {

@@ -87,8 +87,7 @@ class FaceWorkerDB:
 
     def __init__(self, **kwargs):
         if "table" in kwargs:
-            self.table = kwargs["table"]
-            del kwargs["table"]
+            self.table = kwargs.pop("table")
         pool = PersistentDB(creator=pymysql, **kwargs)
         self.connect = pool.connection()
 

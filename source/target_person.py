@@ -23,7 +23,7 @@ from abc import ABCMeta, abstractmethod
 from moviepy.editor import VideoFileClip
 from source.utils import json_load
 from source.utils import save_image
-from source.processor import Tool
+from source.processor import SavePath
 from source.compare_face import format_data, CompareFace
 
 
@@ -41,7 +41,7 @@ class TargetPerson(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def process(self, *args, **kwargs):
+    def compare(self, *args, **kwargs):
         """针对不同人物进行处理过程（人脸对比过程）"""
         pass
 
@@ -53,6 +53,7 @@ class TargetPerson(metaclass=ABCMeta):
 
 class KeyPerson(TargetPerson):
     """正面人物查找，需要保存图片"""
+
     def __init__(self, database, similarity):
         """
 
@@ -64,12 +65,12 @@ class KeyPerson(TargetPerson):
         self.database = database
         self.similarity = similarity
 
-    @lru_cache(maxsize=1024)
+    @lru_cache(maxsize=2048)
     def get_info(self):  # todo 是否需要新建一个表，将习近平加进去
         """获取4个特征"""
         pass
 
-    def process(self):  # 这里和落马官员对比不一样
+    def compare(self):  # 这里和落马官员对比不一样
         pass
 
     def runner(self):
@@ -90,30 +91,29 @@ class SackedOfficials(TargetPerson):
         self.similarity = similarity
         self.target_person_info = self.get_info()
 
-    @lru_cache(maxsize=1024)
+    @lru_cache(maxsize=2048)
     def get_info(self, field="use_face", status=1):
-        sacked_officials_list = self.database.query_person_list(field, status)
-        return format_data(sacked_officials_list)
+        return format_data(self.database.query_person_list(field, status))
 
-    def process(self, df: pd.DataFrame):
-        # df = get_df(face_infos_list)
-        return CompareFace(self.target_person_info,
-                           self.similarity).compare_face(df)
+    def compare(self, df: pd.DataFrame):
+        cmp = CompareFace(self.target_person_info, self.similarity)
+        return cmp.compare_face(df)
 
     def runner(self, message: dict, df: pd.DataFrame, images: np.ndarray,
-               tool: Tool):
+               save_path: SavePath):
         """ 画框、标注名字、保存"""
-        df = self.process(df)
+        df = self.compare(df)
         for index, row in df.iterrows():
             idx, bbox, name = row["idx"], row["bbox"], row["who"]
 
-            person_folder = Path(tool.suspicion_dir, name)
+            person_folder = Path(save_path.suspicion_dir, name)
             if not person_folder.exists():
                 person_folder.mkdir()
 
-            save_path = os.fspath(
-                Path(person_folder, Path(row["frame_path"]).name))
-            save_image(images[:, :, :, idx], bbox, name, save_path)
+            filename = os.fspath(
+                Path(person_folder, Path(row["frame_path"]).name)
+            )
+            save_image(images[:, :, :, idx], bbox, name, filename)
         return df
 
 
@@ -134,19 +134,17 @@ class SpecialPerson(TargetPerson):
         self.es = es
         self.target_person_info = self.get_info()
 
-    @lru_cache(maxsize=1024)
+    @lru_cache(maxsize=2048)
     def get_info(self, field="use_ai", status=1):
-        special_person_list = self.database.query_person_list(field, status)
-        return format_data(special_person_list)
+        return format_data(self.database.query_person_list(field, status))
 
-    def process(self, df: pd.DataFrame):
-        # df = get_df(face_infos_list)
-        return CompareFace(self.target_person_info,
-                           self.similarity).compare_face(df)
+    def compare(self, df: pd.DataFrame):
+        cmp = CompareFace(self.target_person_info, self.similarity)
+        return cmp.compare_face(df)
 
     def runner(self, message: Dict, df: pd.DataFrame):
         elastic_search = []
-        df = self.process(df)
+        df = self.compare(df)
 
         if df.empty:
             return elastic_search

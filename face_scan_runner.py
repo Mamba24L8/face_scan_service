@@ -11,8 +11,7 @@ import json
 import config
 
 from loguru import logger
-from easydict import EasyDict as edict
-from source.processor import Tool, SackedOfficials, SpecialPerson, \
+from source.processor import SavePath, SackedOfficials, SpecialPerson, \
     ViolentSearch, FaceProcess
 from config import MYSQL, REDIS, DOCKER, ELASTICSEARCH, \
     frame_rate_grade
@@ -60,7 +59,8 @@ class FaceWorkerRunner:
             # 开始执行任务，更改状态为1
             self.faceworker_db.set_status(message["id"], "face_status", 1)
 
-            grade, is_search = self.get_grade_and_search_tv(message["chan_num"])
+            grade, is_search = self.get_grade_and_search_tv(
+                message["chan_num"])
             message.update({
                 "grade": grade,
                 "is_search": is_search,
@@ -69,30 +69,33 @@ class FaceWorkerRunner:
 
             if int(is_search) == 1:
                 violent_search = ViolentSearch()
-                special_person = SpecialPerson(self.front_db, config.sim2search,
+                special_person = SpecialPerson(self.front_db,
+                                               config.sim2search,
                                                self.es_client)
             else:
                 violent_search, special_person = None, None
+            key_person = None
 
-            tool = Tool(message)
+            save_path_obj = SavePath(message)
             sacked_officials = SackedOfficials(self.front_db, config.sim2fall)
             processor = FaceProcess(message, config.address, config.frame_rate)
 
-            df_list = processor.runner(sacked_officials=sacked_officials,
+            df_list = processor.runner(save_path=save_path_obj,
+                                       sacked_officials=sacked_officials,
                                        special_person=special_person,
                                        violent_search=violent_search,
-                                       tool=tool
+                                       key_person=key_person
                                        )
             # 　todo IoU排重、文件删除
             logger.success(f"识别成功， 用时{time.time() - tic}秒")
 
 
-def runner():
-    def call():
-        return
-
-    return call
+def main():
+    # todo 实例化sql等
+    face_worker = FaceWorkerRunner()
+    face_worker.runner()
+    pass
 
 
 if __name__ == '__main__':
-    runner()
+    main()

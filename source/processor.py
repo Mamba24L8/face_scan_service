@@ -26,7 +26,7 @@ except ImportError:
     from source.utils import chunked
 
 
-class Tool:
+class SavePath:
     """创建识别出的目标人物的图片和信息路径
 
     Examples
@@ -46,7 +46,7 @@ class Tool:
               'video_url': 'http://10.242.189.224:8080/data/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
               'video_copy_path': '/data/videos/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
               'fps': 25, 'resolution': [352, 288], 'task_id': 'a10aea6e-60c5-43d7-8c8f-cb697085ed4d', 'is_search': 1, 'grade': 3}
-    >>> tool = Tool(message=message)
+    >>> tool = SavePath(message=message)
     >>> tool.suspicion_dir
     '/data/suspicion_face/201806/25/1126/20180625-181559_20180625-201605.mp4'
     >>> tool.txt_dir
@@ -92,35 +92,35 @@ class IouTask:
 
     """
 
-    def __init__(self, message: dict, tool: Tool):
-        if isinstance(message, dict) and isinstance(tool, Tool):
-            dct = {"txt_path": tool.txt_dir,
-                   "suspicion_dir": tool.suspicion_dir}
+    def __init__(self, message: dict, save_path: SavePath):
+        if isinstance(message, dict) and isinstance(save_path, SavePath):
+            dct = {"txt_path": save_path.txt_dir,
+                   "suspicion_dir": save_path.suspicion_dir}
             self.message = message.update(dct)
         else:
             raise ValueError("任务消息不正确")
 
 
-def log_face(df, suspicion_face_dir):
-    idx_unique = df["idx"].unique()
-    lst = []
-    for i in idx_unique:
-        tmp_df = df[df["idx"] == i]
-        tmp_df.reset_index(drop=True, inplace=True)
-
-        frame_log = {"res": [], "id": tmp_df["frame_id"][0],
-                     "time": tmp_df["time_dot"][0]}
-        for _, row in tmp_df.iterrows():
-            frame_log["res"].append({
-                "personId": row["wid"], "personName": row["who"],
-                "sim": row["sim"], "bb": row["bbox"][0].tolist(),
-                "lm": row["landmark"].tolist(),
-                "frameUrl": os.path.join(suspicion_face_dir, row["who"],
-                                         Path(row["frame_path"]).name),
-                "tag": ""
-            })
-        lst.append(frame_log)
-    return lst
+# def log_face(df, suspicion_face_dir):
+#     idx_unique = df["idx"].unique()
+#     lst = []
+#     for i in idx_unique:
+#         tmp_df = df[df["idx"] == i]
+#         tmp_df.reset_index(drop=True, inplace=True)
+#
+#         frame_log = {"res": [], "id": tmp_df["frame_id"][0],
+#                      "time": tmp_df["time_dot"][0]}
+#         for _, row in tmp_df.iterrows():
+#             frame_log["res"].append({
+#                 "personId": row["wid"], "personName": row["who"],
+#                 "sim": row["sim"], "bb": row["bbox"][0].tolist(),
+#                 "lm": row["landmark"].tolist(),
+#                 "frameUrl": os.path.join(suspicion_face_dir, row["who"],
+#                                          Path(row["frame_path"]).name),
+#                 "tag": ""
+#             })
+#         lst.append(frame_log)
+#     return lst
 
 
 class FaceProcess:
@@ -148,14 +148,14 @@ class FaceProcess:
         """对图片名字按照数字大小进行排序，并进行滤掉(按照电视台的等级，多少帧取一张图片).
         """
         frame_dir = self.message["frame_dir"]
-        interval = int(self.message["interval"])
+        interval = self.message["interval"]
         frame_paths = list(Path(frame_dir).glob(pattern))
         frame_paths.sort(key=lambda x: int(x.stem))
 
         # 对于interval是整数时
         if interval == 1:
             return list(map(os.fspath, frame_paths))
-        if interval == int(interval):
+        if isinstance(interval, int):
             frame_paths = list(filter(lambda x: int(x.stem) % interval == 0,
                                       frame_paths))
             return list(map(os.fspath, frame_paths))
@@ -164,8 +164,9 @@ class FaceProcess:
         frame_paths_chosen = []
         num_image = int(self.frame_rate * interval)
         for frame_path in chunked(frame_paths, num_image):
-            gcd = get_gcd(self.frame_rate, num_image)
+            gcd = get_gcd(self.frame_rate, num_image)  # 求公约数
             rate, num = int(self.frame_rate / gcd), int(num_image / gcd)
+
             for frames in chunked(frame_path, num):
                 size = len(frames)
 
@@ -173,10 +174,11 @@ class FaceProcess:
                     frame_paths_chosen.extend(sample(frames, rate))
                 else:
                     frame_paths_chosen.extend(sample(frames, size))
+
         frame_paths_chosen.sort(key=lambda x: int(x.stem))
         return list(map(os.fspath, frame_paths_chosen))
 
-    def runner(self, tool,
+    def runner(self, save_path: SavePath,
                sacked_officials: SackedOfficials,
                special_person=None,
                violent_search=None,
@@ -185,7 +187,7 @@ class FaceProcess:
 
         Parameters
         ----------
-        tool : instances of Tool
+        save_path : instances of Tool
         sacked_officials : instances of SackedOfficials, 落马官员
         special_person : instances of SpecialPerson,  AI搜索
         violent_search : instances of ViolentSearch, 暴力检索
@@ -193,20 +195,24 @@ class FaceProcess:
         """
         logger.info("开始处理任务 {}".format(self.message['video_path']))
         tic = time.time()
+        num_face, num_frame = 0, 0  # 人脸数量、图片数量
         with GetFaceFeature(self.address, max_workers=None) as gff:
             df_list, violent_search_list, save2es_list = [], [], []
             for face_list, images, files in gff.images_feature(self.path):
+                num_frame += len(files)
                 df = get_df(face_list)
                 if df.empty:  # pandas不能直接用 if df
                     continue
 
+                num_face += len(df)
                 df["frame_path"] = [files[i] for i in df["idx"]]
                 df["frame_id"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem))
                 df["time"] = df["frame_id"] / self.frame_rate
 
                 df_list.append(
-                    sacked_officials.runner(self.message, df, images, tool))
+                    sacked_officials.runner(self.message, df, images,
+                                            save_path))
 
                 if isinstance(special_person, SpecialPerson):
                     save2es_list += special_person.runner(self.message, df)
@@ -222,11 +228,12 @@ class FaceProcess:
         if save2es_list:  # todo 本地备份
             # 需要
             special_person.es.bulk(save2es_list)
-            es_backup_file = tool.txt_dir.replace("log", "es")
+            es_backup_file = save_path.txt_dir.replace("log", "es")
             json_dump(es_backup_file, save2es_list)
 
         if violent_search_list:  # 暴力检索本地备份
-            violent_search_backup_file = tool.txt_dir.replace("log", "vio")
+            violent_search_backup_file = save_path.txt_dir.replace("log",
+                                                                   "vio")
             json_dump(violent_search_backup_file, violent_search_list)
 
         if df_list:
