@@ -77,7 +77,7 @@ class KeyPerson(TargetPerson):
         pass
 
 
-class SackedOfficials(TargetPerson):
+class SackedOfficial(TargetPerson):
     """落马官员"""
 
     def __init__(self, database, similarity):
@@ -99,11 +99,11 @@ class SackedOfficials(TargetPerson):
         cmp = CompareFace(self.target_person_info, self.similarity)
         return cmp.compare_face(df)
 
-    def runner(self, message: dict, df: pd.DataFrame, images: np.ndarray,
+    def runner(self, df: pd.DataFrame, images: np.ndarray,
                save_path: SavePath):
         """ 画框、标注名字、保存"""
         df = self.compare(df)
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             idx, bbox, name = row["idx"], row["bbox"], row["who"]
 
             person_folder = Path(save_path.suspicion_dir, name)
@@ -142,30 +142,34 @@ class SpecialPerson(TargetPerson):
         cmp = CompareFace(self.target_person_info, self.similarity)
         return cmp.compare_face(df)
 
-    def runner(self, message: Dict, df: pd.DataFrame):
+    @staticmethod
+    def get_hash_map(video_url, row, msg):
+        hash_map = {
+            "frame_url": msg.get("frame_path"),
+            "video_name": os.path.basename(video_url),
+            "video_url": video_url,
+            "channel_id": msg.get("chan_num"),
+            "channel_name": msg.get("chan_name"),
+            "create_time": str(datetime.now()).split('.')[0],
+            "time": msg.get("time"),
+            "date": msg.get("date"),
+            "face_name": row["who"],
+            "source": msg.get("data_source")
+        }
+        return hash_map
+
+    def runner(self, msg: Dict, df: pd.DataFrame):
         elastic_search = []
         df = self.compare(df)
 
         if df.empty:
             return elastic_search
 
-        # if not df.empty:
-        video_url = '/'.join(message['video_path'].split('/')[-5:])
+        video_url = '/'.join(msg['video_path'].split('/')[-5:])
         for _, row in df.iterrows():
             if row["wid"] is not None:
-                info = {
-                    "frame_url": message.get("frame_path"),
-                    "video_name": os.path.basename(video_url),
-                    "video_url": video_url,
-                    "channel_id": message.get("chan_num"),
-                    "channel_name": message.get("chan_name"),
-                    "create_time": str(datetime.now()).split('.')[0],
-                    "time": message.get("time"),
-                    "date": message.get("date"),
-                    "face_name": row["who"],
-                    "source": message.get("data_source")
-                }
-                elastic_search.append(info)
+                hash_map = self.get_hash_map(video_url, row, msg)
+                elastic_search.append(hash_map)
         # todo 在这里将数据保存到es中
         return elastic_search
 
@@ -174,11 +178,11 @@ class ViolentSearch:
     """暴力搜索"""
 
     @staticmethod
-    def runner(message: dict, df: pd.DataFrame):
+    def runner(msg: dict, df: pd.DataFrame):
         violent_search = []
         for _, row in df.iterrows():
             info = {
-                **message,
+                **msg,
                 "feature": json.dumps(row["feature"].tolist()),
                 "bbox": json.dumps(row["bbox"][0].tolist()),
                 "landmark": json.dumps(row["landmark"].tolist())
@@ -228,11 +232,11 @@ class GetVideoClip:
         ----------
         filename : List[dict], 保存每张图片的信息的路径
         """
-        self.message = json_load(filename)
+        self.msg = json_load(filename)
 
     def clip_video(self, video_path):
         """ 截取视频列表"""
-        self.message.sort(key=lambda hash_map: hash_map["date"])
+        self.msg.sort(key=lambda hash_map: hash_map["date"])
         pass
 
     def get_time_quantum(self, interval_time):

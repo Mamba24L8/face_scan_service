@@ -17,7 +17,7 @@ from loguru import logger
 from source.compare_face import get_df
 from source.grpc_client import GetFaceFeature
 from source.utils import json_dump, get_gcd
-from source.target_person import SackedOfficials, SpecialPerson, ViolentSearch
+from source.target_person import SackedOfficial, SpecialPerson, ViolentSearch
 
 try:
     from more_itertools import chunked
@@ -31,7 +31,7 @@ class SavePath:
 
     Examples
     --------
-    >>> message = {'zip_file_path': 'http://10.242.189.120:8080/frames_zip/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts.tar',
+    >>> msg = {'zip_file_path': 'http://10.242.189.120:8080/frames_zip/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts.tar',
               'frames_dir': '/data/frames/201806/25/1126/20180625-181559_20180625-201605.mp4',
               'audio_path': None,
               'id': '47032',
@@ -46,15 +46,15 @@ class SavePath:
               'video_url': 'http://10.242.189.224:8080/data/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
               'video_copy_path': '/data/videos/yxsz/yxsz/201909/10/122139/640100_122139_20190910100000_20190910110000.ts',
               'fps': 25, 'resolution': [352, 288], 'task_id': 'a10aea6e-60c5-43d7-8c8f-cb697085ed4d', 'is_search': 1, 'grade': 3}
-    >>> tool = SavePath(message=message)
+    >>> tool = SavePath(msg=msg)
     >>> tool.suspicion_dir
     '/data/suspicion_face/201806/25/1126/20180625-181559_20180625-201605.mp4'
     >>> tool.txt_dir
     '/data/txt/201806/25/1126/20180625-181559_20180625-201605.mp4/log.txt'
     """
 
-    def __init__(self, message: Dict, key: str = "frames_dir"):
-        self.path = message.get(key)
+    def __init__(self, msg: Dict, key: str = "frames_dir"):
+        self.path = msg.get(key)
         self.txt_dir = self.make_log_dir()
         self.suspicion_dir = self.make_suspicion_dir()
 
@@ -92,11 +92,11 @@ class IouTask:
 
     """
 
-    def __init__(self, message: dict, save_path: SavePath):
-        if isinstance(message, dict) and isinstance(save_path, SavePath):
+    def __init__(self, msg: dict, save_path: SavePath):
+        if isinstance(msg, dict) and isinstance(save_path, SavePath):
             dct = {"txt_path": save_path.txt_dir,
                    "suspicion_dir": save_path.suspicion_dir}
-            self.message = message.update(dct)
+            self.msg = msg.update(dct)
         else:
             raise ValueError("任务消息不正确")
 
@@ -125,16 +125,16 @@ class IouTask:
 
 class FaceProcess:
 
-    def __init__(self, message, address, frame_rate, pattern="*.jpg"):
+    def __init__(self, msg, address, frame_rate, pattern="*.jpg"):
         """
 
         Parameters
         ----------
-        message : dict
+        msg : dict
         address : str, facecpp's ip
         frame_rate : int or float, 一秒分帧数
         """
-        self.message = message
+        self.msg = msg
         self.address = address
         self.frame_rate = frame_rate
         self.path = self.sort_filter_filename(pattern)
@@ -147,8 +147,8 @@ class FaceProcess:
     def sort_filter_filename(self, pattern="*.jpg") -> List:
         """对图片名字按照数字大小进行排序，并进行滤掉(按照电视台的等级，多少帧取一张图片).
         """
-        frame_dir = self.message["frame_dir"]
-        interval = self.message["interval"]
+        frame_dir = self.msg["frame_dir"]
+        interval = self.msg["interval"]
         frame_paths = list(Path(frame_dir).glob(pattern))
         frame_paths.sort(key=lambda x: int(x.stem))
 
@@ -179,7 +179,7 @@ class FaceProcess:
         return list(map(os.fspath, frame_paths_chosen))
 
     def runner(self, save_path: SavePath,
-               sacked_officials: SackedOfficials,
+               sacked_official: SackedOfficial,
                special_person=None,
                violent_search=None,
                **kwargs):
@@ -188,53 +188,52 @@ class FaceProcess:
         Parameters
         ----------
         save_path : instances of Tool
-        sacked_officials : instances of SackedOfficials, 落马官员
+        sacked_official : instances of SackedOfficials, 落马官员
         special_person : instances of SpecialPerson,  AI搜索
         violent_search : instances of ViolentSearch, 暴力检索
 
         """
-        logger.info("开始处理任务 {}".format(self.message['video_path']))
         tic = time.time()
-        num_face, num_frame = 0, 0  # 人脸数量、图片数量
+        num_face = 0  # 人脸数量
+        num_img = 0  # 图片数量
+
+        logger.info("开始处理任务 {}".format(self.msg['video_path']))
         with GetFaceFeature(self.address, max_workers=None) as gff:
             df_list, violent_search_list, save2es_list = [], [], []
             for face_list, images, files in gff.images_feature(self.path):
-                num_frame += len(files)
                 df = get_df(face_list)
+                num_img += len(files)
+                num_face += len(df)
+
                 if df.empty:  # pandas不能直接用 if df
                     continue
 
-                num_face += len(df)
                 df["frame_path"] = [files[i] for i in df["idx"]]
                 df["frame_id"] = df["frame_path"].apply(
                     lambda x: int(Path(x).stem))
                 df["time"] = df["frame_id"] / self.frame_rate
 
-                df_list.append(
-                    sacked_officials.runner(self.message, df, images,
-                                            save_path))
+                df_list.append(sacked_official.runner(df, images, save_path))
 
                 if isinstance(special_person, SpecialPerson):
-                    save2es_list += special_person.runner(self.message, df)
+                    save2es_list += special_person.runner(self.msg, df)
                 if isinstance(violent_search, ViolentSearch):
-                    violent_search_list += violent_search.runner(self.message,
-                                                                 df)
+                    violent_search_list += violent_search.runner(self.msg, df)
+
                 for instance in kwargs:
                     if hasattr(instance, "runner"):
-                        instance.runner(self.message, df)
+                        instance.runner(self.msg, df)
                     else:
                         raise ValueError("该对象没有‘runner’方法")
 
         if save2es_list:  # todo 本地备份
-            # 需要
             special_person.es.bulk(save2es_list)
             es_backup_file = save_path.txt_dir.replace("log", "es")
             json_dump(es_backup_file, save2es_list)
 
         if violent_search_list:  # 暴力检索本地备份
-            violent_search_backup_file = save_path.txt_dir.replace("log",
-                                                                   "vio")
-            json_dump(violent_search_backup_file, violent_search_list)
+            violent_search_file = save_path.txt_dir.replace("log", "vio")
+            json_dump(violent_search_file, violent_search_list)
 
         if df_list:
             df_list = pd.concat(df_list)
@@ -242,5 +241,5 @@ class FaceProcess:
 
         toc = time.time()
         logger.success(
-            f"人脸识别完成{self.message}\t识别人脸{len(df_list)}个\t用时{toc - tic}秒")
+            f"人脸识别完成{self.msg}\t识别人脸{len(df_list)}个\t用时{toc - tic}秒")
         return df_list
